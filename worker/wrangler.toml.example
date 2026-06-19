@@ -1,0 +1,19 @@
+name = "desktop-pet-studio-api"
+main = "src/index.js"
+compatibility_date = "2026-06-19"
+
+# Copy this file to wrangler.toml before deployment.
+# Do not commit real secrets.
+
+[[r2_buckets]]
+binding = "PET_ASSETS"
+bucket_name = "desktop-pet-assets"
+
+[vars]
+# Comma-separated origins allowed to call this API.
+ALLOWED_ORIGINS = "https://desktop-pet-studio-exu.pages.dev,http://localhost:3000"
+
+# Optional. If set, POST /api/orders/:orderId/generate forwards a job payload
+# to your external worker/VPS/AutoDL dispatcher.
+GENERATOR_WEBHOOK_URL = ""
+

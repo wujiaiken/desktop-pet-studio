@@ -50,8 +50,8 @@ const actionCards = [
 const steps = [
   {
     icon: MessageCircleHeart,
-    title: "发送猫咪照片",
-    description: "通过小红书私信发来正面、侧面和你最喜欢的一张猫咪照片。",
+    title: "上传猫咪照片",
+    description: "在线上传正面、侧面和你最喜欢的一张照片，系统会保存到订单里。",
   },
   {
     icon: Sparkles,
@@ -66,12 +66,12 @@ const steps = [
   {
     icon: Download,
     title: "下载安装到电脑",
-    description: "确认满意后下载安装到电脑，让它每天在桌面上陪你工作。",
+    description: "资源包完成后下载安装到电脑客户端，让它每天在桌面上陪你工作。",
   },
 ];
 
 const contactNotes = [
-  "私信时附上猫咪照片和一句性格描述，效果会更贴近。",
+  "上传时附上猫咪照片和一句性格描述，效果会更贴近。",
   "适合做自己的桌面陪伴，也适合送给养猫的朋友。",
   "目前优先支持 Windows 桌面版本，后续动作会持续更新。",
 ];
@@ -276,15 +276,15 @@ export default function Home() {
               <p className="text-xs text-[#8f7b67]">把你家猫咪装进电脑桌面</p>
             </div>
           </div>
-          <a
-            href="#contact"
+          <Link
+            href="/upload"
             className={cn(
               buttonVariants({ size: "lg" }),
               "rounded-full bg-[#5e4a39] px-5 text-[#fff9f2] shadow-[0_12px_24px_rgba(94,74,57,0.18)] hover:bg-[#4f3e2f]",
             )}
           >
-            私信定制
-          </a>
+            上传定制
+          </Link>
         </header>
 
         <div className="grid flex-1 items-center gap-12 py-12 lg:grid-cols-[1.02fr_0.98fr] lg:gap-16 lg:py-16">
@@ -327,8 +327,8 @@ export default function Home() {
               transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1], delay: 0.24 }}
               className="mt-8 flex flex-col gap-3 sm:flex-row"
             >
-              <a
-                href="#contact"
+              <Link
+                href="/upload"
                 className={cn(
                   buttonVariants({ size: "lg" }),
                   "h-12 rounded-full bg-[#5a4736] px-6 text-base text-[#fff9f3] shadow-[0_18px_30px_rgba(90,71,54,0.18)] hover:bg-[#4f3f31]",
@@ -336,7 +336,7 @@ export default function Home() {
               >
                 定制我的猫咪
                 <ArrowRight className="size-4" />
-              </a>
+              </Link>
               <a
                 href="#actions"
                 className={cn(
@@ -433,26 +433,25 @@ export default function Home() {
               <div className="relative">
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/80 px-4 py-2 text-sm text-[#8b7764] shadow-[0_10px_24px_rgba(97,73,47,0.06)]">
                   <HeartHandshake className="size-4" />
-                  联系定制
+                  在线定制
                 </div>
                 <h2 className="mt-6 text-3xl font-semibold tracking-tight text-[#4d3f31] sm:text-4xl">
                   想把你家猫咪做成桌面陪伴，
                   <br />
-                  直接来小红书私信我
+                  先上传照片开始生成
                 </h2>
                 <p className="mt-5 max-w-xl text-base leading-8 text-[#786858] sm:text-lg">
-                  把猫咪照片、名字和想保留的性格特点发来，比如“爱发呆”“有点傲娇”“总爱伸懒腰”，我们就能更贴近它本人去做。
+                  把猫咪照片、名字和想保留的性格特点填好，比如“爱发呆”“有点傲娇”“总爱伸懒腰”，后端会进入生成队列并输出桌宠资源包。
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <Link
-                    href="https://www.xiaohongshu.com/"
-                    target="_blank"
+                    href="/upload"
                     className={cn(
                       buttonVariants({ size: "lg" }),
                       "h-12 rounded-full bg-[#5a4736] px-6 text-base text-[#fff9f3] shadow-[0_16px_30px_rgba(90,71,54,0.18)] hover:bg-[#4f3f31]",
                     )}
                   >
-                    去小红书私信
+                    上传照片定制
                     <ArrowRight className="size-4" />
                   </Link>
                   <a
@@ -473,16 +472,15 @@ export default function Home() {
                     <Cat className="size-5" />
                   </div>
                   <div>
-                    <p className="text-lg font-semibold text-[#554331]">私信建议这样发</p>
+                    <p className="text-lg font-semibold text-[#554331]">填写建议</p>
                     <p className="text-sm text-[#8c7966]">更快进入制作和预览流程</p>
                   </div>
                 </div>
 
                 <div className="mt-6 rounded-[1.6rem] bg-[#f8f1e8] p-5 text-sm leading-8 text-[#6e5b48]">
-                  <p>你好，我想定制我的猫咪桌面宠物。</p>
                   <p>猫咪名字：雪球</p>
                   <p>性格特点：黏人、爱伸懒腰、坐着会舔爪子</p>
-                  <p>我会附上正面、侧面和最像它的一张照片。</p>
+                  <p>照片建议：正面全身、侧面全身、最像它的一张生活照。</p>
                 </div>
 
                 <div className="mt-6 space-y-3">
