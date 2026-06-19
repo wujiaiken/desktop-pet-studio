@@ -74,6 +74,7 @@ Worker 部署后可以先验证半条链路：
 
 ```text
 GENERATOR_WEBHOOK_URL=https://你的外部生成worker/jobs
+GENERATOR_SHARED_SECRET=一段长随机密钥
 ```
 
 然后由外部生成 worker 负责：
@@ -82,7 +83,6 @@ GENERATOR_WEBHOOK_URL=https://你的外部生成worker/jobs
 拉取 R2 原图
 → 调 AutoDL ComfyUI
 → 打包 pet_package.zip
-→ 上传 R2
-→ 回调 /api/worker/orders/:orderId/callback
+→ 上传给 Worker 的 /api/worker/orders/:orderId/artifacts
+→ Worker 写入 R2 并把订单置为 ready
 ```
-

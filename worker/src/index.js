@@ -50,6 +50,18 @@ const worker = {
         return workerCallback(request, env, route.params.orderId);
       }
 
+      if (route.name === "workerJob" && request.method === "GET") {
+        return workerJob(request, env, route.params.orderId);
+      }
+
+      if (route.name === "workerSource" && request.method === "GET") {
+        return workerSource(request, env, route.params.orderId, route.params.index);
+      }
+
+      if (route.name === "workerArtifacts" && request.method === "POST") {
+        return workerArtifacts(request, env, route.params.orderId);
+      }
+
       return json(request, env, { ok: false, error: "method_not_allowed" }, 405);
     } catch (error) {
       return json(
@@ -96,6 +108,21 @@ function matchRoute(pathname) {
   match = pathname.match(/^\/api\/worker\/orders\/([^/]+)\/callback$/);
   if (match) {
     return { name: "workerCallback", params: { orderId: match[1] } };
+  }
+
+  match = pathname.match(/^\/api\/worker\/orders\/([^/]+)\/job$/);
+  if (match) {
+    return { name: "workerJob", params: { orderId: match[1] } };
+  }
+
+  match = pathname.match(/^\/api\/worker\/orders\/([^/]+)\/source\/(\d+)$/);
+  if (match) {
+    return { name: "workerSource", params: { orderId: match[1], index: Number(match[2]) } };
+  }
+
+  match = pathname.match(/^\/api\/worker\/orders\/([^/]+)\/artifacts$/);
+  if (match) {
+    return { name: "workerArtifacts", params: { orderId: match[1] } };
   }
 
   return null;
@@ -203,18 +230,27 @@ async function generate(request, env, orderId) {
   await putOrder(env, order);
 
   if (env.GENERATOR_WEBHOOK_URL) {
-    const callbackUrl = new URL(`/api/worker/orders/${orderId}/callback`, new URL(request.url).origin).toString();
+    const origin = new URL(request.url).origin;
+    const jobUrl = new URL(`/api/worker/orders/${orderId}/job`, origin).toString();
+    const callbackUrl = new URL(`/api/worker/orders/${orderId}/callback`, origin).toString();
+    const artifactsUrl = new URL(`/api/worker/orders/${orderId}/artifacts`, origin).toString();
+
     await fetch(env.GENERATOR_WEBHOOK_URL, {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        ...(env.GENERATOR_SHARED_SECRET
+          ? { authorization: `Bearer ${env.GENERATOR_SHARED_SECRET}` }
+          : {}),
       },
       body: JSON.stringify({
         orderId,
         productTier: order.productTier,
         species: order.species,
         photoKeys: order.photoKeys,
+        jobUrl,
         callbackUrl,
+        artifactsUrl,
       }),
     });
   }
@@ -256,6 +292,9 @@ async function downloadPackage(request, env, orderId) {
 }
 
 async function workerCallback(request, env, orderId) {
+  const authResponse = authorizeGenerator(request, env);
+  if (authResponse) return authResponse;
+
   const order = await requireOrder(env, orderId);
   const body = await readJson(request);
   const now = new Date().toISOString();
@@ -280,6 +319,125 @@ async function workerCallback(request, env, orderId) {
   order.updatedAt = now;
   await putOrder(env, order);
   return json(request, env, { ok: true, order: publicOrder(order) });
+}
+
+async function workerJob(request, env, orderId) {
+  const authResponse = authorizeGenerator(request, env);
+  if (authResponse) return authResponse;
+
+  const order = await requireOrder(env, orderId);
+  const origin = new URL(request.url).origin;
+
+  return json(request, env, {
+    ok: true,
+    order: {
+      ...publicOrder(order),
+      customerName: order.customerName,
+      notes: order.notes,
+      sourceImages: order.photoKeys.map((key, index) => ({
+        index,
+        key,
+        url: new URL(`/api/worker/orders/${orderId}/source/${index}`, origin).toString(),
+      })),
+      callbackUrl: new URL(`/api/worker/orders/${orderId}/callback`, origin).toString(),
+      artifactsUrl: new URL(`/api/worker/orders/${orderId}/artifacts`, origin).toString(),
+    },
+  });
+}
+
+async function workerSource(request, env, orderId, index) {
+  const authResponse = authorizeGenerator(request, env);
+  if (authResponse) return authResponse;
+
+  const order = await requireOrder(env, orderId);
+  const key = order.photoKeys[index];
+
+  if (!key) {
+    return json(request, env, { ok: false, error: "source_not_found" }, 404);
+  }
+
+  const object = await env.PET_ASSETS.get(key);
+  if (!object) {
+    return json(request, env, { ok: false, error: "source_missing" }, 404);
+  }
+
+  return new Response(object.body, {
+    headers: {
+      "content-type": object.httpMetadata?.contentType || "application/octet-stream",
+      "cache-control": "private, max-age=60",
+    },
+  });
+}
+
+async function workerArtifacts(request, env, orderId) {
+  const authResponse = authorizeGenerator(request, env);
+  if (authResponse) return authResponse;
+
+  const order = await requireOrder(env, orderId);
+  const contentType = request.headers.get("content-type") || "";
+
+  if (!contentType.includes("multipart/form-data")) {
+    return json(request, env, { ok: false, error: "expected_multipart_form_data" }, 400);
+  }
+
+  const form = await request.formData();
+  const packageFile = form.get("package");
+  const previewFile = form.get("preview");
+  const manifestFile = form.get("manifest");
+  const now = new Date().toISOString();
+
+  if (!(packageFile instanceof File)) {
+    return json(request, env, { ok: false, error: "missing_package" }, 400);
+  }
+
+  const packageKey = `orders/${orderId}/package/pet_package.zip`;
+  await env.PET_ASSETS.put(packageKey, packageFile.stream(), {
+    httpMetadata: {
+      contentType: packageFile.type || "application/zip",
+    },
+    customMetadata: {
+      orderId,
+      artifact: "package",
+    },
+  });
+
+  if (previewFile instanceof File) {
+    order.previewKey = `orders/${orderId}/preview.png`;
+    await env.PET_ASSETS.put(order.previewKey, previewFile.stream(), {
+      httpMetadata: {
+        contentType: previewFile.type || "image/png",
+      },
+      customMetadata: {
+        orderId,
+        artifact: "preview",
+      },
+    });
+  }
+
+  if (manifestFile instanceof File) {
+    await env.PET_ASSETS.put(`orders/${orderId}/package/manifest.json`, manifestFile.stream(), {
+      httpMetadata: {
+        contentType: manifestFile.type || "application/json; charset=utf-8",
+      },
+      customMetadata: {
+        orderId,
+        artifact: "manifest",
+      },
+    });
+  }
+
+  order.status = ORDER_STATUS.READY;
+  order.packageKey = packageKey;
+  order.error = null;
+  order.updatedAt = now;
+  await putOrder(env, order);
+
+  return json(request, env, {
+    ok: true,
+    order: publicOrder(order),
+    packageKey,
+    previewKey: order.previewKey,
+  });
 }
 
 async function requireOrder(env, orderId) {
@@ -352,6 +510,22 @@ function createId(prefix) {
   const bytes = crypto.getRandomValues(new Uint8Array(10));
   const value = [...bytes].map((item) => item.toString(16).padStart(2, "0")).join("");
   return `${prefix}_${value}`;
+}
+
+function authorizeGenerator(request, env) {
+  const expected = env.GENERATOR_SHARED_SECRET;
+  if (!expected) {
+    return null;
+  }
+
+  const header = request.headers.get("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+
+  if (token === expected) {
+    return null;
+  }
+
+  return json(request, env, { ok: false, error: "unauthorized" }, 401);
 }
 
 function json(request, env, payload, status = 200) {

@@ -18,6 +18,9 @@ POST /api/orders/:orderId/generate
 GET  /api/orders/:orderId
 GET  /api/orders/:orderId/download
 POST /api/worker/orders/:orderId/callback
+GET  /api/worker/orders/:orderId/job
+GET  /api/worker/orders/:orderId/source/:index
+POST /api/worker/orders/:orderId/artifacts
 ```
 
 ## MVP Flow
@@ -27,7 +30,10 @@ POST /api/worker/orders/:orderId/callback
 3. Frontend calls `POST /api/orders/:orderId/generate`.
 4. Worker marks the order as `queued`.
 5. If `GENERATOR_WEBHOOK_URL` is configured, Worker forwards the job to the external generator.
-6. External generator runs AutoDL ComfyUI, builds `pet_package.zip`, uploads it to R2, then calls:
+6. External generator fetches job data from `GET /api/worker/orders/:orderId/job`.
+7. External generator downloads source images from `GET /api/worker/orders/:orderId/source/:index`.
+8. External generator runs AutoDL ComfyUI, builds `pet_package.zip`, then uploads artifacts to `POST /api/worker/orders/:orderId/artifacts`.
+9. If the generator only wants to update progress or failure status, it calls:
 
 ```json
 {
@@ -37,7 +43,7 @@ POST /api/worker/orders/:orderId/callback
 }
 ```
 
-7. Customer downloads from `GET /api/orders/:orderId/download`.
+10. Customer downloads from `GET /api/orders/:orderId/download`.
 
 ## Deploy Notes
 
@@ -53,3 +59,4 @@ npx wrangler deploy
 
 For the first MVP, `GENERATOR_WEBHOOK_URL` can stay empty. The API will still accept orders and uploads, but generation will stay queued until the external generator is added.
 
+Set `GENERATOR_SHARED_SECRET` in both the Worker and generator when the dispatcher is reachable from the public internet.

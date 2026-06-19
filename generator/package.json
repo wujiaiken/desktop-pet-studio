@@ -1,0 +1,15 @@
+{
+  "name": "desktop-pet-generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "mock-job": "node src/mock-job.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "express": "^5.2.1",
+    "multer": "^2.0.2"
+  }
+}

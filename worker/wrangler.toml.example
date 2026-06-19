@@ -17,3 +17,6 @@ ALLOWED_ORIGINS = "https://desktop-pet-studio-exu.pages.dev,http://localhost:300
 # to your external worker/VPS/AutoDL dispatcher.
 GENERATOR_WEBHOOK_URL = ""
 
+# Optional but recommended. If set, generator-only endpoints require:
+# Authorization: Bearer <GENERATOR_SHARED_SECRET>
+GENERATOR_SHARED_SECRET = ""

@@ -10,7 +10,8 @@ AutoDL 只做生成，不做长期下载站。
 → 外部生成 worker 调用 AutoDL ComfyUI
 → ComfyUI 输出透明图/视频
 → 外部生成 worker 打包 pet_package.zip
-→ zip 上传到 R2
+→ zip 上传给 Cloudflare Worker
+→ Cloudflare Worker 写入 R2
 → AutoDL 清理临时文件并关机
 → 客户从 Worker/R2 稳定下载
 → 客户端导入资源包
@@ -86,3 +87,15 @@ package
 
 哪个动作失败，只重试哪个动作。
 
+## 生成器接口
+
+生成器接到 `POST /jobs` 后，不直接访问 R2，而是通过 Worker 私有接口工作：
+
+```text
+GET  /api/worker/orders/<orderId>/job
+GET  /api/worker/orders/<orderId>/source/<index>
+POST /api/worker/orders/<orderId>/callback
+POST /api/worker/orders/<orderId>/artifacts
+```
+
+这些接口可以用 `GENERATOR_SHARED_SECRET` 做 Bearer 鉴权。
