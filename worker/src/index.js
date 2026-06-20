@@ -167,16 +167,41 @@ async function uploadPhoto(request, env, orderId) {
   const order = await requireOrder(env, orderId);
   const contentType = request.headers.get("content-type") || "";
 
+  if (isAllowedImageType(contentType)) {
+    const extension = extensionFromContentType(contentType);
+    const key = `orders/${orderId}/source/${createId("photo")}${extension}`;
+    await env.PET_ASSETS.put(key, await request.arrayBuffer(), {
+      httpMetadata: {
+        contentType,
+      },
+      customMetadata: {
+        originalName: normalizeString(request.headers.get("x-file-name") || "photo", 120),
+        orderId,
+      },
+    });
+
+    order.photoKeys = [...order.photoKeys, key];
+    order.status = ORDER_STATUS.PHOTOS_UPLOADED;
+    order.updatedAt = new Date().toISOString();
+    await putOrder(env, order);
+
+    return json(request, env, {
+      ok: true,
+      order: publicOrder(order),
+      uploaded: [key],
+    });
+  }
+
   if (!contentType.includes("multipart/form-data")) {
     return json(request, env, { ok: false, error: "expected_multipart_form_data" }, 400);
   }
 
   const form = await request.formData();
-  const files = form.getAll("photos").filter((item) => item instanceof File);
+  const files = form.getAll("photos").filter(isFileLike);
 
   if (!files.length) {
     const single = form.get("photo");
-    if (single instanceof File) {
+    if (isFileLike(single)) {
       files.push(single);
     }
   }
@@ -193,7 +218,7 @@ async function uploadPhoto(request, env, orderId) {
 
     const extension = extensionFromFile(file);
     const key = `orders/${orderId}/source/${createId("photo")}${extension}`;
-    await env.PET_ASSETS.put(key, file.stream(), {
+    await env.PET_ASSETS.put(key, await file.arrayBuffer(), {
       httpMetadata: {
         contentType: file.type || "application/octet-stream",
       },
@@ -386,12 +411,12 @@ async function workerArtifacts(request, env, orderId) {
   const manifestFile = form.get("manifest");
   const now = new Date().toISOString();
 
-  if (!(packageFile instanceof File)) {
+  if (!isFileLike(packageFile)) {
     return json(request, env, { ok: false, error: "missing_package" }, 400);
   }
 
   const packageKey = `orders/${orderId}/package/pet_package.zip`;
-  await env.PET_ASSETS.put(packageKey, packageFile.stream(), {
+  await env.PET_ASSETS.put(packageKey, await packageFile.arrayBuffer(), {
     httpMetadata: {
       contentType: packageFile.type || "application/zip",
     },
@@ -401,9 +426,9 @@ async function workerArtifacts(request, env, orderId) {
     },
   });
 
-  if (previewFile instanceof File) {
+  if (isFileLike(previewFile)) {
     order.previewKey = `orders/${orderId}/preview.png`;
-    await env.PET_ASSETS.put(order.previewKey, previewFile.stream(), {
+    await env.PET_ASSETS.put(order.previewKey, await previewFile.arrayBuffer(), {
       httpMetadata: {
         contentType: previewFile.type || "image/png",
       },
@@ -414,8 +439,8 @@ async function workerArtifacts(request, env, orderId) {
     });
   }
 
-  if (manifestFile instanceof File) {
-    await env.PET_ASSETS.put(`orders/${orderId}/package/manifest.json`, manifestFile.stream(), {
+  if (isFileLike(manifestFile)) {
+    await env.PET_ASSETS.put(`orders/${orderId}/package/manifest.json`, await manifestFile.arrayBuffer(), {
       httpMetadata: {
         contentType: manifestFile.type || "application/json; charset=utf-8",
       },
@@ -497,12 +522,30 @@ function normalizeString(value, maxLength) {
 }
 
 function isAllowedImage(file) {
-  return ["image/jpeg", "image/png", "image/webp"].includes(file.type);
+  return isAllowedImageType(file.type);
+}
+
+function isFileLike(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    typeof value.stream === "function" &&
+    typeof value.name === "string"
+  );
 }
 
 function extensionFromFile(file) {
-  if (file.type === "image/png") return ".png";
-  if (file.type === "image/webp") return ".webp";
+  return extensionFromContentType(file.type);
+}
+
+function isAllowedImageType(type) {
+  return ["image/jpeg", "image/png", "image/webp"].includes(type.split(";")[0].trim());
+}
+
+function extensionFromContentType(type) {
+  const cleanType = type.split(";")[0].trim();
+  if (cleanType === "image/png") return ".png";
+  if (cleanType === "image/webp") return ".webp";
   return ".jpg";
 }
 

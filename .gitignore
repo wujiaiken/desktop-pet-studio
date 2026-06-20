@@ -36,6 +36,9 @@ yarn-error.log*
 !.env.example
 !**/.env.example
 worker/wrangler.toml
+worker/.wrangler/
+__pycache__/
+*.pyc
 
 # vercel
 .vercel

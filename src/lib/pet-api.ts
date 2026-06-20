@@ -54,17 +54,26 @@ export async function createOrder(input: CreateOrderInput): Promise<PetOrder> {
 }
 
 export async function uploadOrderPhotos(orderId: string, photos: File[]): Promise<PetOrder> {
-  const form = new FormData();
+  let order: PetOrder | null = null;
+
   for (const photo of photos) {
-    form.append("photos", photo);
+    const response = await fetch(`${API_BASE}/api/orders/${orderId}/photos`, {
+      method: "POST",
+      headers: {
+        "content-type": photo.type,
+        "x-file-name": encodeURIComponent(photo.name),
+      },
+      body: photo,
+    });
+    const payload = await readApiJson<{ order: PetOrder }>(response);
+    order = payload.order;
   }
 
-  const response = await fetch(`${API_BASE}/api/orders/${orderId}/photos`, {
-    method: "POST",
-    body: form,
-  });
-  const payload = await readApiJson<{ order: PetOrder }>(response);
-  return payload.order;
+  if (!order) {
+    throw new Error("missing_photo");
+  }
+
+  return order;
 }
 
 export async function startGeneration(orderId: string): Promise<PetOrder> {
@@ -84,4 +93,3 @@ export async function getOrder(orderId: string): Promise<PetOrder> {
 export function getDownloadUrl(orderId: string): string {
   return `${API_BASE}/api/orders/${orderId}/download`;
 }
-
