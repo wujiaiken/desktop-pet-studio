@@ -1,3 +1,5 @@
+import { connect } from "cloudflare:sockets";
+
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
 };
@@ -260,24 +262,33 @@ async function generate(request, env, orderId) {
     const callbackUrl = new URL(`/api/worker/orders/${orderId}/callback`, origin).toString();
     const artifactsUrl = new URL(`/api/worker/orders/${orderId}/artifacts`, origin).toString();
 
-    await fetch(env.GENERATOR_WEBHOOK_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(env.GENERATOR_SHARED_SECRET
-          ? { authorization: `Bearer ${env.GENERATOR_SHARED_SECRET}` }
-          : {}),
-      },
-      body: JSON.stringify({
-        orderId,
-        productTier: order.productTier,
-        species: order.species,
-        photoKeys: order.photoKeys,
-        jobUrl,
-        callbackUrl,
-        artifactsUrl,
-      }),
+    const webhookResponse = await dispatchGeneratorWebhook(env, {
+      orderId,
+      productTier: order.productTier,
+      species: order.species,
+      photoKeys: order.photoKeys,
+      jobUrl,
+      callbackUrl,
+      artifactsUrl,
     });
+
+    if (!webhookResponse.ok) {
+      const errorText = normalizeString(await webhookResponse.text(), 500);
+      order.status = ORDER_STATUS.FAILED;
+      order.error = normalizeString(
+        `generator_webhook_http_${webhookResponse.status}${errorText ? `: ${errorText}` : ""}`,
+        500,
+      );
+      order.updatedAt = new Date().toISOString();
+      await putOrder(env, order);
+      return json(request, env, {
+        ok: false,
+        error: "generator_webhook_failed",
+        webhookStatus: webhookResponse.status,
+        webhookBody: errorText,
+        order: publicOrder(order),
+      }, 502);
+    }
   }
 
   return json(request, env, {
@@ -521,6 +532,100 @@ function normalizeString(value, maxLength) {
   return value.trim().slice(0, maxLength);
 }
 
+async function dispatchGeneratorWebhook(env, payload) {
+  const target = new URL(env.GENERATOR_WEBHOOK_URL);
+  const body = JSON.stringify(payload);
+  const headers = {
+    host: target.host,
+    "content-type": "application/json",
+    "content-length": new TextEncoder().encode(body).length.toString(),
+    connection: "close",
+    ...(env.GENERATOR_SHARED_SECRET
+      ? { authorization: `Bearer ${env.GENERATOR_SHARED_SECRET}` }
+      : {}),
+  };
+
+  if (target.protocol === "http:" && isIpHostname(target.hostname)) {
+    return httpOverTcp(target, body, headers);
+  }
+
+  return fetch(target.toString(), {
+    method: "POST",
+    headers,
+    body,
+  });
+}
+
+async function httpOverTcp(target, body, headers) {
+  const socket = connect({
+    hostname: target.hostname,
+    port: target.port ? Number(target.port) : 80,
+  });
+
+  const encoder = new TextEncoder();
+  const writer = socket.writable.getWriter();
+  const headerLines = Object.entries(headers)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\r\n");
+  const requestText =
+    `POST ${target.pathname}${target.search} HTTP/1.1\r\n` +
+    `${headerLines}\r\n\r\n` +
+    body;
+
+  await writer.write(encoder.encode(requestText));
+  writer.releaseLock();
+
+  const reader = socket.readable.getReader();
+  const chunks = [];
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+    socket.close();
+  }
+
+  const responseText = new TextDecoder().decode(concatChunks(chunks));
+  const splitIndex = responseText.indexOf("\r\n\r\n");
+  const rawHead = splitIndex >= 0 ? responseText.slice(0, splitIndex) : responseText;
+  const rawBody = splitIndex >= 0 ? responseText.slice(splitIndex + 4) : "";
+  const [statusLine = "", ...rawHeaderLines] = rawHead.split("\r\n");
+  const statusMatch = statusLine.match(/^HTTP\/\d+(?:\.\d+)?\s+(\d+)\s*(.*)$/i);
+  const responseHeaders = new Headers();
+
+  for (const line of rawHeaderLines) {
+    const index = line.indexOf(":");
+    if (index <= 0) continue;
+    responseHeaders.append(line.slice(0, index).trim(), line.slice(index + 1).trim());
+  }
+
+  return new Response(rawBody, {
+    status: statusMatch ? Number(statusMatch[1]) : 520,
+    statusText: statusMatch?.[2] || "",
+    headers: responseHeaders,
+  });
+}
+
+function concatChunks(chunks) {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return merged;
+}
+
+function isIpHostname(hostname) {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+}
+
 function isAllowedImage(file) {
   return isAllowedImageType(file.type);
 }
@@ -592,7 +697,7 @@ function corsResponse(request, env, body, init = {}) {
   }
 
   headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
-  headers.set("access-control-allow-headers", "content-type,authorization");
+  headers.set("access-control-allow-headers", "content-type,authorization,x-file-name");
 
   return new Response(body, {
     ...init,

@@ -1,0 +1,12 @@
+name = "desktop-pet-studio"
+pages_build_output_dir = "out"
+compatibility_date = "2026-06-19"
+
+[[r2_buckets]]
+binding = "PET_ASSETS"
+bucket_name = "desktop-pet-assets"
+
+[vars]
+ALLOWED_ORIGINS = "https://desktop-pet-studio-exu.pages.dev,http://localhost:3000"
+GENERATOR_WEBHOOK_URL = "http://81.68.126.249:8791/jobs"
+NEXT_PUBLIC_PET_API_BASE = "https://desktop-pet-studio-exu.pages.dev"
